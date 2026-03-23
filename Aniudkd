@@ -1,0 +1,62 @@
+import os
+import email
+from email import policy
+from email.parser import BytesParser
+
+def extract_email_text(file_path):
+    with open(file_path, 'rb') as f:
+        msg = BytesParser(policy=policy.default).parse(f)
+
+    subject = msg['subject'] or ""
+
+    body = ""
+    if msg.is_multipart():
+        for part in msg.walk():
+            if part.get_content_type() == "text/plain":
+                body += part.get_content()
+    else:
+        body = msg.get_content()
+
+    return f"Subject: {subject}\nBody: {body}"
+
+
+# ---------------------------
+# Classify intent using LLM
+# ---------------------------
+def classify_email_llm(email_text):
+    prompt = f"""
+Classify the intent of the following email into one of these categories:
+- verification
+- follow_up
+- meeting
+- invoice
+- background_check
+- information_request
+- other
+
+Return only the category name.
+
+Email:
+{email_text}
+"""
+
+    response = client.chat.completions.create(
+        model=DEPLOYMENT,
+        messages=[
+            {"role": "system", "content": "You classify email intent."},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0
+    )
+
+    return response.choices[0].message.content.strip()
+
+
+# ---------------------------
+# Example usage
+# ---------------------------
+if __name__ == "__main__":
+    eml_file = "sample.eml"
+    email_text = extract_email_text(eml_file)
+    intent = classify_email_llm(email_text)
+    print("Predicted intent:", intent)
