@@ -1,0 +1,163 @@
+import pandas as pd
+from azure.ai.formrecognizer import DocumentAnalysisClient
+from azure.core.credentials import AzureKeyCredential
+from openai import AzureOpenAI
+import json
+
+# -----------------------------
+# CONFIG
+# -----------------------------
+DOC_INTEL_ENDPOINT = "YOUR_DOC_INTEL_ENDPOINT"
+DOC_INTEL_KEY = "YOUR_DOC_INTEL_KEY"
+
+AZURE_OPENAI_ENDPOINT = "YOUR_AOAI_ENDPOINT"
+AZURE_OPENAI_KEY = "YOUR_AOAI_KEY"
+DEPLOYMENT_NAME = "gpt-4o"  # or your deployed model
+
+FILE_PATH = "sample.pdf"
+
+
+# -----------------------------
+# STEP 1: Extract text using Document Intelligence
+# -----------------------------
+def extract_text(file_path):
+    client = DocumentAnalysisClient(
+        endpoint=DOC_INTEL_ENDPOINT,
+        credential=AzureKeyCredential(DOC_INTEL_KEY)
+    )
+
+    with open(file_path, "rb") as f:
+        poller = client.begin_analyze_document(
+            "prebuilt-layout",  # or "prebuilt-document"
+            document=f
+        )
+
+    result = poller.result()
+
+    text = ""
+    for page in result.pages:
+        for line in page.lines:
+            text += line.content + "\n"
+
+    return text
+
+
+# -----------------------------
+# STEP 2: Send to LLM to extract key-value pairs
+# -----------------------------
+def extract_kv_llm(text):
+    client = AzureOpenAI(
+        api_key=AZURE_OPENAI_KEY,
+        azure_endpoint=AZURE_OPENAI_ENDPOINT,
+        api_version="2024-02-01"
+    )
+
+    prompt = f"""
+    Extract key-value pairs from the following document text.
+
+    Return strictly JSON in this format:
+    {{
+        "key1": "value1",
+        "key2": "value2"
+    }}
+
+    TEXT:
+    {text}
+    """
+
+    response = client.chat.completions.create(
+        model=DEPLOYMENT_NAME,
+        messages=[
+            {"role": "system", "content": "You extract structured data."},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0
+    )
+
+    content = response.choices[0].message.content
+
+    # Parse JSON safely
+    try:
+        kv_dict = json.loads(content)
+    except:
+        # fallback cleanup if model adds extra text
+        content = content[content.find("{"):content.rfind("}")+1]
+        kv_dict = json.loads(content)
+
+    return kv_dict
+
+
+# -----------------------------
+# STEP 3: Convert to DataFrame
+# -----------------------------
+def kv_to_df(kv_dict):
+    df = pd.DataFrame(list(kv_dict.items()), columns=["Key", "Value"])
+    return df
+
+
+# -----------------------------
+# MAIN FLOW
+# -----------------------------
+if __name__ == "__main__":
+    text = extract_text(FILE_PATH)
+    kv_dict = extract_kv_llm(text)
+    df = kv_to_df(kv_dict)
+
+    print(df)
+
+def extract_kv_llm(text):
+    client = AzureOpenAI(
+        api_key=AZURE_OPENAI_KEY,
+        azure_endpoint=AZURE_OPENAI_ENDPOINT,
+        api_version="2024-02-01"
+    )
+
+    # Define expected keys (important for consistent schema)
+    expected_keys = [
+        "Invoice Number",
+        "Invoice Date",
+        "Vendor Name",
+        "Total Amount",
+        "Tax Amount"
+    ]
+
+    prompt = f"""
+    Extract the following fields from the document.
+
+    Rules:
+    - Return ALL keys listed below
+    - If a value is missing or not found, return "" (empty string)
+    - Output strictly valid JSON
+    - Do not add extra keys
+
+    Keys:
+    {expected_keys}
+
+    TEXT:
+    {text}
+    """
+
+    response = client.chat.completions.create(
+        model=DEPLOYMENT_NAME,
+        messages=[
+            {"role": "system", "content": "You extract structured data."},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0
+    )
+
+    content = response.choices[0].message.content
+
+    # Clean JSON if needed
+    try:
+        kv_dict = json.loads(content)
+    except:
+        content = content[content.find("{"):content.rfind("}")+1]
+        kv_dict = json.loads(content)
+
+    # Ensure all expected keys exist
+    for key in expected_keys:
+        if key not in kv_dict or kv_dict[key] is None:
+            kv_dict[key] = ""
+
+    return kv_dict
