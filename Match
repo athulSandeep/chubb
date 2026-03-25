@@ -1,0 +1,35 @@
+for policyNumber in remittanceDF["Policy Number"]:
+    with log_container4:
+        st.write(f"Processing: {policyNumber}")
+
+    # Filter matching rows
+    rem_row = remittanceDF[remittanceDF["Policy Number"] == policyNumber]
+    oidm_row = oidmDf[oidmDf["Policy Number"] == policyNumber]
+
+    if not oidm_row.empty:
+        # Extract values (assuming single match per policy)
+        rem_row = rem_row.iloc[0]
+        oidm_row = oidm_row.iloc[0]
+
+        gross_match = rem_row["Gross"] == oidm_row["Gross"]
+        tax_match = rem_row["Tax"] == oidm_row["Tax"]
+        commission_match = rem_row["Commission"] == oidm_row["Commission"]
+        net_match = rem_row["Net"] == oidm_row["Net"]
+
+        policyDetails.append({
+            "policy Number": policyNumber,
+            "policyPresent": True,
+            "gross_match": gross_match,
+            "tax_match": tax_match,
+            "commission_match": commission_match,
+            "net_match": net_match
+        })
+    else:
+        policyDetails.append({
+            "policy Number": policyNumber,
+            "policyPresent": False,
+            "gross_match": False,
+            "tax_match": False,
+            "commission_match": False,
+            "net_match": False
+        })
