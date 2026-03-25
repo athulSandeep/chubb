@@ -1,7 +1,6 @@
-for policyNumber in remittanceDF["Policy Number"]:
+ policyNumber in remittanceDF["Policy Number"]:
     with log_container4:
-        st.write(f"Processing: {policyNumber}")
-
+        st.write(f"Processing: {p
     # Filter matching rows
     rem_row = remittanceDF[remittanceDF["Policy Number"] == policyNumber]
     oidm_row = oidmDf[oidmDf["Policy Number"] == policyNumber]
@@ -33,3 +32,98 @@ for policyNumber in remittanceDF["Policy Number"]:
             "commission_match": False,
             "net_match": False
         })
+
+
+
+
+
+
+
+def to_float(val):
+    if pd.isna(val):
+        return 0.0
+    return float(str(val).replace(",", "").strip())
+
+for policyNumber in remittanceDF["Policy Number"]:
+    with log_container4:
+        st.write(f"Processing: {policyNumber}")
+
+    rem_row = remittanceDF[remittanceDF["Policy Number"] == policyNumber]
+    oidm_row = oidmDf[oidmDf["Policy Number"] == policyNumber]
+
+    if not oidm_row.empty:
+        rem_row = rem_row.iloc[0]
+        oidm_row = oidm_row.iloc[0]
+
+        # Convert to float before comparison
+        rem_gross = to_float(rem_row["Gross"])
+        oidm_gross = to_float(oidm_row["Gross"])
+
+        rem_tax = to_float(rem_row["Tax"])
+        oidm_tax = to_float(oidm_row["Tax"])
+
+        rem_commission = to_float(rem_row["Commission"])
+        oidm_commission = to_float(oidm_row["Commission"])
+
+        rem_net = to_float(rem_row["Net"])
+        oidm_net = to_float(oidm_row["Net"])
+
+        # Compare
+        gross_match = rem_gross == oidm_gross
+        tax_match = rem_tax == oidm_tax
+        commission_match = rem_commission == oidm_commission
+        net_match = rem_net == oidm_net
+
+        # Remarks
+        remarks_list = []
+        if not gross_match:
+            remarks_list.append(f"Gross mismatch ({rem_gross} vs {oidm_gross})")
+        if not tax_match:
+            remarks_list.append(f"Tax mismatch ({rem_tax} vs {oidm_tax})")
+        if not commission_match:
+            remarks_list.append(f"Commission mismatch ({rem_commission} vs {oidm_commission})")
+        if not net_match:
+            remarks_list.append(f"Net mismatch ({rem_net} vs {oidm_net})")
+
+        # Match status
+        all_match = all([gross_match, tax_match, commission_match, net_match])
+        any_match = any([gross_match, tax_match, commission_match, net_match])
+
+        if all_match:
+            match_status = "Full Match"
+            remarks = "All values match"
+        elif any_match:
+            match_status = "Partial Match"
+            remarks = ", ".join(remarks_list)
+        else:
+            match_status = "No Match"
+            remarks = "All values mismatch"
+
+        policyDetails.append({
+            "policy Number": policyNumber,
+            "policyPresent": True,
+            "gross_match": gross_match,
+            "tax_match": tax_match,
+            "commission_match": commission_match,
+            "net_match": net_match,
+            "match_status": match_status,
+            "remarks": remarks
+        })
+
+    else:
+        policyDetails.append({
+            "policy Number": policyNumber,
+            "policyPresent": False,
+            "gross_match": False,
+            "tax_match": False,
+            "commission_match": False,
+            "net_match": False,
+            "match_status": "No Match",
+            "remarks": "Policy not found in OIDM"
+        })
+
+
+
+
+
+
